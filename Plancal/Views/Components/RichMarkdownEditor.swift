@@ -1,0 +1,412 @@
+import SwiftUI
+import WebKit
+
+struct RichMarkdownEditor: View {
+    @Binding var markdown: String
+    let placeholder: String
+    var minHeight: CGFloat = 190
+    var onFocusChanged: (Bool) -> Void = { _ in }
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var commandRequest: MarkdownEditorCommandRequest?
+    @State private var isEditingLink = false
+    @State private var linkDestination = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            formattingBar
+
+            CodeMirrorMarkdownView(
+                configuration: CodeMirrorConfiguration(
+                    markdown: $markdown,
+                    placeholder: placeholder,
+                    colorScheme: colorScheme,
+                    commandRequest: commandRequest,
+                    onRequestLink: { isEditingLink = true },
+                    onFocusChanged: onFocusChanged
+                )
+            )
+            .frame(minHeight: minHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .accessibilityLabel("Markdown note")
+        }
+    }
+
+    private var formattingBar: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 5) {
+                Menu {
+                    Button { send(.heading(0)) } label: {
+                        PlancalNativeIconLabel(title: "Text", icon: .text)
+                    }
+                    Button { send(.heading(1)) } label: {
+                        PlancalNativeIconLabel(title: "Heading 1", icon: .heading1)
+                    }
+                    Button { send(.heading(2)) } label: {
+                        PlancalNativeIconLabel(title: "Heading 2", icon: .heading2)
+                    }
+                    Button { send(.heading(3)) } label: {
+                        PlancalNativeIconLabel(title: "Heading 3", icon: .heading3)
+                    }
+                } label: {
+                    PlancalNativeIconLabel(title: "Text", icon: .text, size: 16)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .plancalHoverEffect(scale: 1.025)
+                .help("Choose a text style, or type #, ##, or ### followed by a space")
+
+                Divider()
+                    .frame(height: 22)
+                    .padding(.horizontal, 3)
+
+                formatButton("Bold", icon: .bold, command: .bold)
+                formatButton("Italic", icon: .italic, command: .italic)
+                formatButton("Strikethrough", icon: .strikethrough, command: .strikethrough)
+                formatButton("Inline code", icon: .code, command: .inlineCode)
+
+                Button {
+                    isEditingLink = true
+                } label: {
+                    PlancalGlyph(icon: .link, size: 18)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .contentShape(Circle())
+                .plancalHoverEffect(scale: 1.08)
+                .accessibilityLabel("Link")
+                .popover(isPresented: $isEditingLink, arrowEdge: .bottom) {
+                    linkEditor
+                }
+
+                Divider()
+                    .frame(height: 22)
+                    .padding(.horizontal, 3)
+
+                formatButton("Bulleted list", icon: .bulletedList, command: .bulletList)
+                formatButton("Numbered list", icon: .numberedList, command: .orderedList)
+                formatButton("Checklist", icon: .checklist, command: .taskList)
+                formatButton("Quote", icon: .quote, command: .blockquote)
+                formatButton("Code block", icon: .code, command: .codeBlock)
+            }
+            .padding(6)
+            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.055), lineWidth: 0.75)
+                    .allowsHitTesting(false)
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private var linkEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Link destination")
+                .font(.headline)
+            TextField("https://example.com", text: $linkDestination)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { applyLink() }
+            HStack {
+                Button("Cancel") {
+                    isEditingLink = false
+                    linkDestination = ""
+                }
+                Spacer()
+                Button("Apply") { applyLink() }
+                    .buttonStyle(.glassProminent)
+                    .disabled(linkDestination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 300)
+    }
+
+    private func formatButton(
+        _ title: String,
+        icon: PlancalIcon,
+        command: MarkdownEditorCommand
+    ) -> some View {
+        Button {
+            send(command)
+        } label: {
+            PlancalGlyph(icon: icon, size: 18)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .frame(width: 30, height: 30)
+        .contentShape(Circle())
+        .plancalHoverEffect(scale: 1.08)
+        .accessibilityLabel(title)
+    }
+
+    private func applyLink() {
+        let destination = linkDestination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !destination.isEmpty else { return }
+
+        let normalized: String
+        if URL(string: destination)?.scheme != nil {
+            normalized = destination
+        } else {
+            normalized = "https://\(destination)"
+        }
+
+        send(.link(normalized))
+        isEditingLink = false
+        linkDestination = ""
+    }
+
+    private func send(_ command: MarkdownEditorCommand) {
+        commandRequest = MarkdownEditorCommandRequest(command: command)
+    }
+}
+
+private struct MarkdownEditorCommandRequest {
+    let id = UUID()
+    let command: MarkdownEditorCommand
+}
+
+private enum MarkdownEditorCommand {
+    case focus
+    case bold
+    case italic
+    case strikethrough
+    case inlineCode
+    case heading(Int)
+    case bulletList
+    case orderedList
+    case taskList
+    case blockquote
+    case codeBlock
+    case link(String)
+
+    var payload: [String: Any] {
+        switch self {
+        case .focus:
+            ["name": "focus"]
+        case .bold:
+            ["name": "bold"]
+        case .italic:
+            ["name": "italic"]
+        case .strikethrough:
+            ["name": "strikethrough"]
+        case .inlineCode:
+            ["name": "inlineCode"]
+        case .heading(let level):
+            ["name": "heading", "value": level]
+        case .bulletList:
+            ["name": "bulletList"]
+        case .orderedList:
+            ["name": "orderedList"]
+        case .taskList:
+            ["name": "taskList"]
+        case .blockquote:
+            ["name": "blockquote"]
+        case .codeBlock:
+            ["name": "codeBlock"]
+        case .link(let destination):
+            ["name": "link", "value": destination]
+        }
+    }
+}
+
+private struct CodeMirrorConfiguration {
+    var markdown: Binding<String>
+    var placeholder: String
+    var colorScheme: ColorScheme
+    var commandRequest: MarkdownEditorCommandRequest?
+    var onRequestLink: () -> Void
+    var onFocusChanged: (Bool) -> Void
+}
+
+@MainActor
+private final class CodeMirrorCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    private(set) weak var webView: WKWebView?
+    var configuration: CodeMirrorConfiguration
+
+    private var isReady = false
+    private var webMarkdown: String?
+    private var lastPlaceholder: String?
+    private var lastTheme: String?
+    private var lastCommandID: UUID?
+
+    init(configuration: CodeMirrorConfiguration) {
+        self.configuration = configuration
+    }
+
+    func connect(to webView: WKWebView) {
+        self.webView = webView
+        let controller = webView.configuration.userContentController
+        controller.add(self, name: "editorReady")
+        controller.add(self, name: "markdownChanged")
+        controller.add(self, name: "requestLink")
+        controller.add(self, name: "focusChanged")
+
+        guard let resourceURL = Bundle.main.url(forResource: "MarkdownEditor", withExtension: "html") else {
+            webView.loadHTMLString(
+                "<html><body style='font: -apple-system-body; color: #777'>Editor resource is unavailable.</body></html>",
+                baseURL: nil
+            )
+            return
+        }
+
+        do {
+            let html = try String(contentsOf: resourceURL, encoding: .utf8)
+            webView.loadHTMLString(html, baseURL: resourceURL.deletingLastPathComponent())
+        } catch {
+            webView.loadHTMLString(
+                "<html><body style='font: -apple-system-body; color: #777'>Editor resource could not be loaded.</body></html>",
+                baseURL: nil
+            )
+        }
+    }
+
+    func disconnect() {
+        guard let webView else { return }
+        let controller = webView.configuration.userContentController
+        controller.removeScriptMessageHandler(forName: "editorReady")
+        controller.removeScriptMessageHandler(forName: "markdownChanged")
+        controller.removeScriptMessageHandler(forName: "requestLink")
+        controller.removeScriptMessageHandler(forName: "focusChanged")
+    }
+
+    func update(configuration: CodeMirrorConfiguration) {
+        self.configuration = configuration
+        synchronizeIfReady()
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        switch message.name {
+        case "editorReady":
+            isReady = true
+            synchronizeIfReady()
+        case "markdownChanged":
+            guard let value = message.body as? String else { return }
+            webMarkdown = value
+            if configuration.markdown.wrappedValue != value {
+                configuration.markdown.wrappedValue = value
+            }
+        case "requestLink":
+            configuration.onRequestLink()
+        case "focusChanged":
+            guard let isFocused = message.body as? Bool else { return }
+            configuration.onFocusChanged(isFocused)
+        default:
+            break
+        }
+    }
+
+    private func synchronizeIfReady() {
+        guard isReady, let webView else { return }
+
+        let markdown = configuration.markdown.wrappedValue
+        if webMarkdown != markdown {
+            webMarkdown = markdown
+            evaluate("window.plancalEditor?.setContent(\(jsonString(markdown)))", in: webView)
+        }
+
+        if lastPlaceholder != configuration.placeholder {
+            lastPlaceholder = configuration.placeholder
+            evaluate("window.plancalEditor?.setPlaceholder(\(jsonString(configuration.placeholder)))", in: webView)
+        }
+
+        let theme = configuration.colorScheme == .dark ? "dark" : "light"
+        if lastTheme != theme {
+            lastTheme = theme
+            evaluate("window.plancalEditor?.setTheme(\(jsonString(theme)))", in: webView)
+        }
+
+        if let request = configuration.commandRequest, request.id != lastCommandID {
+            guard let payload = jsonObject(request.command.payload) else { return }
+            lastCommandID = request.id
+            evaluate("window.plancalEditor?.command(\(payload))", in: webView)
+        }
+    }
+
+    private func evaluate(_ script: String, in webView: WKWebView) {
+        webView.evaluateJavaScript(script) { _, _ in }
+    }
+
+    private func jsonString(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let result = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+        return result
+    }
+
+    private func jsonObject(_ value: [String: Any]) -> String? {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value),
+              let result = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return result
+    }
+}
+
+@MainActor
+private func makeCodeMirrorWebView(coordinator: CodeMirrorCoordinator) -> WKWebView {
+    let webConfiguration = WKWebViewConfiguration()
+    webConfiguration.websiteDataStore = .nonPersistent()
+    webConfiguration.defaultWebpagePreferences.allowsContentJavaScript = true
+
+    let webView = WKWebView(frame: .zero, configuration: webConfiguration)
+    webView.navigationDelegate = coordinator
+
+    #if os(macOS)
+    webView.allowsMagnification = false
+    #else
+    webView.isOpaque = false
+    webView.backgroundColor = .clear
+    webView.scrollView.backgroundColor = .clear
+    webView.scrollView.keyboardDismissMode = .interactive
+    #endif
+
+    coordinator.connect(to: webView)
+    return webView
+}
+
+#if os(macOS)
+private struct CodeMirrorMarkdownView: NSViewRepresentable {
+    var configuration: CodeMirrorConfiguration
+
+    func makeCoordinator() -> CodeMirrorCoordinator {
+        CodeMirrorCoordinator(configuration: configuration)
+    }
+
+    func makeNSView(context: Context) -> WKWebView {
+        makeCodeMirrorWebView(coordinator: context.coordinator)
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.update(configuration: configuration)
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: CodeMirrorCoordinator) {
+        coordinator.disconnect()
+    }
+}
+#else
+private struct CodeMirrorMarkdownView: UIViewRepresentable {
+    var configuration: CodeMirrorConfiguration
+
+    func makeCoordinator() -> CodeMirrorCoordinator {
+        CodeMirrorCoordinator(configuration: configuration)
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        makeCodeMirrorWebView(coordinator: context.coordinator)
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.update(configuration: configuration)
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: CodeMirrorCoordinator) {
+        coordinator.disconnect()
+    }
+}
+#endif
