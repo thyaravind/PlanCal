@@ -124,7 +124,8 @@ enum PlanningScale: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 
     nonisolated func contains(_ candidate: Date, inPeriodContaining anchor: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
-        interval(containing: anchor, calendar: calendar).contains(candidate)
+        let interval = interval(containing: anchor, calendar: calendar)
+        return candidate >= interval.start && candidate < interval.end
     }
 
     nonisolated func label(for date: Date, calendar: Calendar = .autoupdatingCurrent) -> String {

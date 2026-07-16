@@ -15,7 +15,7 @@ struct DailyBriefSummary: Equatable {
         let openDailyTasks = tasks.filter {
             !$0.isCompleted
                 && $0.scale == .daily
-                && $0.scale.interval(containing: day, calendar: calendar).contains($0.scheduledDate)
+                && $0.scale.contains($0.scheduledDate, inPeriodContaining: day, calendar: calendar)
         }
         let overdueTasks = tasks.filter { $0.isOverdue(at: day, calendar: calendar) }
 

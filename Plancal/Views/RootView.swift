@@ -4,7 +4,6 @@ import SwiftUI
 enum AppSection: String, CaseIterable, Identifiable {
     case today
     case plan
-    case notes
     case settings
 
     var id: Self { self }
@@ -12,8 +11,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today: "Today"
-        case .plan: "Plan"
-        case .notes: "Notes"
+        case .plan: "Calendar"
         case .settings: "Settings"
         }
     }
@@ -22,7 +20,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: .today
         case .plan: .plan
-        case .notes: .notes
         case .settings: .settings
         }
     }
@@ -36,6 +33,7 @@ struct RootView: View {
     @AppStorage("notifications.enabled") private var notificationsEnabled = true
     @AppStorage("notifications.hour") private var notificationHour = 8
     @AppStorage("notifications.minute") private var notificationMinute = 0
+    @AppStorage("planning.carryOverdueTasks") private var carriesOverdueTasks = false
     @State private var selectedSection: AppSection? = .today
     @State private var selectedCompactSection = AppSection.today
 
@@ -45,7 +43,7 @@ struct RootView: View {
 
     private var taskRevision: String {
         let latest = tasks.first?.updatedAt.timeIntervalSinceReferenceDate ?? 0
-        return "\(tasks.count)-\(latest)-\(notificationsEnabled)-\(notificationHour)-\(notificationMinute)"
+        return "\(tasks.count)-\(latest)-\(carriesOverdueTasks)-\(notificationsEnabled)-\(notificationHour)-\(notificationMinute)"
     }
 
     var body: some View {
@@ -98,7 +96,6 @@ struct RootView: View {
         TabView(selection: $selectedCompactSection) {
             compactTab(.today) { TodayView() }
             compactTab(.plan) { PlannerView() }
-            compactTab(.notes) { NotesView() }
             compactTab(.settings) { SettingsView() }
         }
     }
@@ -124,13 +121,16 @@ struct RootView: View {
         switch section {
         case .today: TodayView()
         case .plan: PlannerView()
-        case .notes: NotesView()
         case .settings: SettingsView()
         }
     }
 
     private func prepareCurrentPlan() async {
-        RolloverService.rollForwardOutstandingTasks(tasks, modelContext: modelContext)
+        RolloverService.rollForwardOutstandingTasks(
+            tasks,
+            enabled: carriesOverdueTasks,
+            modelContext: modelContext
+        )
         await notificationService.refreshAuthorization()
         await notificationService.refreshDailySummaries(
             tasks: tasks,

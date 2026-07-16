@@ -23,7 +23,7 @@
         --editor-code: rgba(191, 90, 242, 0.11);
         --editor-quote: rgba(10, 132, 255, 0.14);
         --editor-selection: rgba(10, 132, 255, 0.28);
-        --editor-accent: rgb(64, 156, 255);
+        --editor-accent: rgb(105, 190, 255);
       }
 
       * { box-sizing: border-box; }
@@ -61,7 +61,7 @@
       .cm-content {
         min-height: 100%;
         padding: 7px 4px 28px;
-        caret-color: var(--editor-accent);
+        caret-color: var(--editor-accent) !important;
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif !important;
       }
 
@@ -76,7 +76,10 @@
         background: var(--editor-selection) !important;
       }
 
-      .cm-cursor { border-left-color: var(--editor-accent); }
+      .cm-cursor,
+      .cm-dropCursor {
+        border-left: 2px solid var(--editor-accent) !important;
+      }
       .cm-editor .cm-activeLine { background: transparent !important; }
       .cm-placeholder { color: var(--editor-secondary); font-style: normal; }
 

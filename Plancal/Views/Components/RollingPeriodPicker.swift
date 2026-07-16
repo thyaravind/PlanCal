@@ -2,6 +2,10 @@ import SwiftUI
 
 struct PlanningScaleControl: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
     let scales: [PlanningScale]
     @Binding var selection: PlanningScale
     @Namespace private var selectedScale
@@ -14,12 +18,25 @@ struct PlanningScaleControl: View {
         _selection = selection
     }
 
+    @ViewBuilder
     var body: some View {
+        if requiresCompactLabels {
+            scaleButtons(usesFullLabels: false)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                scaleButtons(usesFullLabels: true)
+                scaleButtons(usesFullLabels: false)
+            }
+        }
+    }
+
+    private func scaleButtons(usesFullLabels: Bool) -> some View {
         HStack(spacing: 2) {
             ForEach(scales) { scale in
                 PlanningScaleButton(
                     scale: scale,
                     isSelected: scale == selection,
+                    usesFullLabel: usesFullLabels,
                     selectionNamespace: selectedScale
                 ) {
                     withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
@@ -40,11 +57,20 @@ struct PlanningScaleControl: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Planning scale")
     }
+
+    private var requiresCompactLabels: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 }
 
 private struct PlanningScaleButton: View {
     let scale: PlanningScale
     let isSelected: Bool
+    let usesFullLabel: Bool
     let selectionNamespace: Namespace.ID
     let action: () -> Void
 
@@ -54,7 +80,11 @@ private struct PlanningScaleButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(scale.toolbarLabel(isSelected: isSelected))
+            Text(
+                usesFullLabel
+                    ? scale.shortTitle
+                    : scale.toolbarLabel(isSelected: isSelected)
+            )
                 .font(.subheadline.weight(isSelected ? .semibold : .medium))
                 .foregroundStyle(isSelected ? Color.white : Color.secondary)
                 .lineLimit(1)
@@ -66,7 +96,10 @@ private struct PlanningScaleButton: View {
                     if isSelected {
                         Capsule()
                             .fill(tint.gradient)
-                            .matchedGeometryEffect(id: "selected-scale", in: selectionNamespace)
+                            .matchedGeometryEffect(
+                                id: "selected-scale-\(usesFullLabel)",
+                                in: selectionNamespace
+                            )
                             .shadow(color: tint.opacity(0.2), radius: 6, y: 2)
                     }
                 }
@@ -78,11 +111,43 @@ private struct PlanningScaleButton: View {
     }
 }
 
+struct GoToCurrentPeriodButton: View {
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ViewThatFits(in: .horizontal) {
+                PlancalIconLabel(
+                    title: "Go to today",
+                    icon: .today,
+                    weight: .bold,
+                    size: 15
+                )
+                PlancalGlyph(icon: .today, weight: .bold, size: 17)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 36, minHeight: 36)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay {
+                Capsule()
+                    .strokeBorder(tint.opacity(0.28), lineWidth: 0.8)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .plancalHoverEffect(scale: 1.04, lifts: true)
+        .accessibilityLabel("Go to today")
+    }
+}
+
 struct RollingPeriodPicker: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let scale: PlanningScale
     @Binding var selection: Date
-    let openTaskCount: (Date) -> Int
 
     @State private var originDate: Date
     @State private var centeredOffset: Int? = 0
@@ -102,12 +167,10 @@ struct RollingPeriodPicker: View {
 
     init(
         scale: PlanningScale,
-        selection: Binding<Date>,
-        openTaskCount: @escaping (Date) -> Int = { _ in 0 }
+        selection: Binding<Date>
     ) {
         self.scale = scale
         _selection = selection
-        self.openTaskCount = openTaskCount
         _originDate = State(initialValue: selection.wrappedValue)
     }
 
@@ -135,8 +198,7 @@ struct RollingPeriodPicker: View {
                                     scale: scale,
                                     date: date,
                                     isSelected: offset == centeredOffset,
-                                    isCurrent: scale.contains(.now, inPeriodContaining: date),
-                                    openTaskCount: openTaskCount(date)
+                                    isCurrent: scale.contains(.now, inPeriodContaining: date)
                                 ) {
                                     guard offset != centeredOffset else { return }
                                     withAnimation(reduceMotion ? nil : .snappy(duration: 0.32)) {
@@ -175,6 +237,18 @@ struct RollingPeriodPicker: View {
                         }
                     }
                     .id(scrollResetID)
+                    .mask {
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: .black, location: 0.035),
+                                .init(color: .black, location: 0.965),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    }
                 }
             }
             .overlay {
@@ -194,6 +268,22 @@ struct RollingPeriodPicker: View {
         }
         .onChange(of: scale) { _, _ in
             originDate = selection
+            centeredOffset = 0
+            committedOffset = 0
+            isScrolling = false
+            resetLoadedOffsets()
+            scrollResetID = UUID()
+        }
+        .onChange(of: selection) { _, newSelection in
+            let representedSelection = scale.offset(originDate, by: committedOffset)
+            guard !scale.contains(
+                newSelection,
+                inPeriodContaining: representedSelection
+            ) else {
+                return
+            }
+
+            originDate = newSelection
             centeredOffset = 0
             committedOffset = 0
             isScrolling = false
@@ -250,7 +340,6 @@ private struct PeriodButton: View {
     let date: Date
     let isSelected: Bool
     let isCurrent: Bool
-    let openTaskCount: Int
     let action: () -> Void
 
     private var tint: Color { PlancalDesign.tint(for: scale) }
@@ -258,64 +347,59 @@ private struct PeriodButton: View {
     @ViewBuilder
     var body: some View {
         #if os(macOS)
-        periodButton
-            .highPriorityGesture(TapGesture().onEnded { action() })
-        #else
-        periodButton
-        #endif
-    }
-
-    private var periodButton: some View {
         Button(action: action) {
-            VStack(spacing: 5) {
-                Text(topLabel)
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.35)
-                    .foregroundStyle(isSelected ? .white.opacity(0.82) : .secondary)
-                    .lineLimit(1)
-
-                Text(primaryLabel)
-                    .font(primaryFont)
-                    .foregroundStyle(isSelected ? .white : .primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                    .contentTransition(.numericText())
-
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(isSelected ? Color.white : tint)
-                        .frame(width: 5, height: 5)
-                        .opacity(isCurrent ? 1 : 0)
-
-                    if openTaskCount > 0 {
-                        Text(openTaskCount, format: .number)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(isSelected ? Color.white : tint)
-                            .padding(.horizontal, 5)
-                            .frame(minHeight: 15)
-                            .background(
-                                isSelected ? Color.white.opacity(0.18) : tint.opacity(0.11),
-                                in: Capsule()
-                            )
-                            .accessibilityHidden(true)
-                    }
+            periodContent
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .onEnded { value in
+                    let horizontalDistance = abs(value.translation.width)
+                    let verticalDistance = abs(value.translation.height)
+                    guard horizontalDistance < 6, verticalDistance < 6 else { return }
+                    action()
                 }
-                .frame(height: 15)
-            }
-            .frame(width: buttonWidth, height: 68)
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .background {
-                if !isSelected && isCurrent {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(tint.opacity(0.08))
-                }
-            }
+        )
+        .plancalHoverEffect(scale: 1.025)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .help(accessibilityLabel)
+        #else
+        Button(action: action) {
+            periodContent
         }
         .buttonStyle(.plain)
         .plancalHoverEffect(scale: 1.025)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .help(accessibilityLabel)
+        #endif
+    }
+
+    private var periodContent: some View {
+        VStack(spacing: 6) {
+            Text(topLabel)
+                .font(.caption2.weight(.bold))
+                .tracking(0.35)
+                .foregroundStyle(isSelected ? .white.opacity(0.82) : .secondary)
+                .lineLimit(1)
+
+            Text(primaryLabel)
+                .font(primaryFont)
+                .foregroundStyle(isSelected ? .white : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .contentTransition(.numericText())
+        }
+        .frame(width: buttonWidth, height: 68)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            if !isSelected && isCurrent {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(tint.opacity(0.62), lineWidth: 1.5)
+                    .padding(1)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     private var topLabel: String {
@@ -326,10 +410,9 @@ private struct PeriodButton: View {
         case .weekly:
             return "W\(calendar.component(.weekOfYear, from: date))"
         case .monthly:
-            return date.formatted(.dateTime.month(.abbreviated)).uppercased()
+            return date.formatted(.dateTime.year())
         case .quarterly:
-            let quarter = ((calendar.component(.month, from: date) - 1) / 3) + 1
-            return "Q\(quarter)"
+            return date.formatted(.dateTime.year())
         case .yearly:
             return isCurrent ? "CURRENT" : "YEAR"
         }
@@ -348,7 +431,12 @@ private struct PeriodButton: View {
                 return "\(interval.start.formatted(.dateTime.day()))–\(end.formatted(.dateTime.day())) \(end.formatted(.dateTime.month(.abbreviated)))"
             }
             return "\(interval.start.formatted(.dateTime.day().month(.abbreviated)))–\(end.formatted(.dateTime.day().month(.abbreviated)))"
-        case .monthly, .quarterly, .yearly:
+        case .monthly:
+            return date.formatted(.dateTime.month(.abbreviated))
+        case .quarterly:
+            let quarter = ((calendar.component(.month, from: date) - 1) / 3) + 1
+            return "Q\(quarter)"
+        case .yearly:
             return date.formatted(.dateTime.year())
         }
     }
@@ -368,8 +456,7 @@ private struct PeriodButton: View {
 
     private var accessibilityLabel: String {
         let currentSuffix = isCurrent ? ", current period" : ""
-        let taskSuffix = openTaskCount == 0 ? "" : ", \(openTaskCount) open \(openTaskCount == 1 ? "task" : "tasks")"
-        return "\(scale.label(for: date))\(currentSuffix)\(taskSuffix)"
+        return "\(scale.label(for: date))\(currentSuffix)"
     }
 }
 

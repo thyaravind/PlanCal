@@ -62,6 +62,25 @@ final class PlanningScaleTests: XCTestCase {
         XCTAssertEqual(PlanningScale.yearly.toolbarLabel(isSelected: false), "Y")
     }
 
+    func testPlanningPeriodsExcludeTheirEndBoundary() throws {
+        let july16 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        let july17 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 17)))
+
+        XCTAssertTrue(PlanningScale.daily.contains(july16, inPeriodContaining: july16, calendar: calendar))
+        XCTAssertFalse(PlanningScale.daily.contains(july17, inPeriodContaining: july16, calendar: calendar))
+        XCTAssertTrue(PlanningScale.daily.contains(july17, inPeriodContaining: july17, calendar: calendar))
+    }
+
+    @MainActor
+    func testTaskAtNextPeriodBoundaryDoesNotBelongToPreviousPeriod() throws {
+        let july16 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        let july17 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 17)))
+        let task = PlannerTask(title: "Tomorrow", scale: .daily, scheduledDate: july17)
+
+        XCTAssertFalse(task.belongs(to: .daily, anchor: july16, calendar: calendar))
+        XCTAssertTrue(task.belongs(to: .daily, anchor: july17, calendar: calendar))
+    }
+
     func testTaskLabelsDescribeTheConcretePeriod() throws {
         let date = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 15)))
         let labels = PlanningScale.allCases.map { $0.taskLabel(for: date, calendar: calendar) }
@@ -101,5 +120,23 @@ final class PlanningScaleTests: XCTestCase {
 
         XCTAssertEqual(changed, 0)
         XCTAssertEqual(task.scheduledDate, original)
+    }
+
+    @MainActor
+    func testDisabledRolloverLeavesOverdueTaskInOriginalPeriod() throws {
+        let original = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 14)))
+        let current = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        let task = PlannerTask(title: "Leave me", scale: .daily, scheduledDate: original)
+
+        let changed = RolloverService.rollForwardOutstandingTasks(
+            [task],
+            enabled: false,
+            to: current,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(changed, 0)
+        XCTAssertEqual(task.scheduledDate, original)
+        XCTAssertEqual(task.carryCount, 0)
     }
 }

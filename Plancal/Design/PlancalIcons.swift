@@ -13,6 +13,9 @@ enum PlancalIcon: Hashable {
     case year
     case add
     case close
+    case disclosure
+    case previous
+    case next
     case confirm
     case edit
     case delete
@@ -29,7 +32,11 @@ enum PlancalIcon: Hashable {
     case complete
     case incomplete
     case carriedForward
+    case priority
     case essential
+    case priorityGentle
+    case priorityImportant
+    case priorityEssential
     case text
     case heading1
     case heading2
@@ -56,6 +63,9 @@ enum PlancalIcon: Hashable {
         case .year: .calendarStar
         case .add: .plus
         case .close: .x
+        case .disclosure: .caretRight
+        case .previous: .caretLeft
+        case .next: .caretRight
         case .confirm: .check
         case .edit: .pencilSimple
         case .delete: .trash
@@ -72,7 +82,11 @@ enum PlancalIcon: Hashable {
         case .complete: .checkCircle
         case .incomplete: .circle
         case .carriedForward: .arrowBendRightDown
+        case .priority: .flag
         case .essential: .warningCircle
+        case .priorityGentle: .feather
+        case .priorityImportant: .arrowUp
+        case .priorityEssential: .warningOctagon
         case .text: .paragraph
         case .heading1: .textHOne
         case .heading2: .textHTwo

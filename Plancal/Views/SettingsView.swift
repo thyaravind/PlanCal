@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(PersistenceController.self) private var persistence
     @Environment(AppleCalendarService.self) private var calendarService
     @Environment(NotificationService.self) private var notificationService
     @Query(sort: \PlannerTask.updatedAt, order: .reverse) private var tasks: [PlannerTask]
@@ -10,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("notifications.hour") private var notificationHour = 8
     @AppStorage("notifications.minute") private var notificationMinute = 0
     @AppStorage("planning.visibleScales") private var visibleScaleStorage = PlanningScale.defaultVisibleStorageValue
+    @AppStorage("planning.carryOverdueTasks") private var carriesOverdueTasks = false
 
     private var visibleScales: [PlanningScale] {
         PlanningScale.visibleScales(from: visibleScaleStorage)
@@ -40,9 +40,26 @@ struct SettingsView: View {
                         }
                         .disabled(visibleScales.count == 1 && visibleScales.contains(scale))
                     }
-                    Text("Choose which time scales appear in Plan. At least one horizon remains visible.")
+                    Text("Choose which time scales appear in Calendar. At least one horizon remains visible.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                Section("Task rollover") {
+                    Toggle(isOn: $carriesOverdueTasks) {
+                        PlancalIconLabel(
+                            title: "Carry overdue tasks forward",
+                            icon: .carriedForward,
+                            weight: .duotone
+                        )
+                    }
+                    Text(
+                        carriesOverdueTasks
+                            ? "Incomplete tasks move into the current period while retaining their original due period."
+                            : "Incomplete tasks remain in their assigned period and are still reported as overdue."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 Section("Daily brief") {
@@ -88,45 +105,37 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Sync") {
-                    LabeledContent("Storage", value: persistence.syncMode.title)
-                    switch persistence.syncMode {
-                    case .cloudKit:
-                        PlancalIconLabel(
-                            title: "Private iCloud sync is configured for iCloud.app.plancal.native.",
-                            icon: .synced
-                        )
-                            .foregroundStyle(.secondary)
-                    case .localFallback(let reason):
-                        PlancalIconLabel(
-                            title: "Plancal opened a local store because iCloud was unavailable.",
-                            icon: .cloudWarning
-                        )
-                            .foregroundStyle(.orange)
-                        Text(reason)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    case .inMemory:
-                        Text("Preview data is not persisted.")
+                Section {
+                    VStack(spacing: 4) {
+                        Text("Plancal")
+                            .font(.headline)
+                        Text("Version \(appVersion)")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
-
-                Section("About") {
-                    LabeledContent("Bundle identifier", value: "app.plancal.native")
-                    LabeledContent("Platforms", value: "iOS · iPadOS · macOS")
-                    LabeledContent("Minimum version", value: "26.0")
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
                 }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
             .frame(maxWidth: PlancalDesign.contentWidth)
         }
-        .adaptiveNavigationTitle("Settings")
+        .navigationTitle("Settings")
         .task {
             await notificationService.refreshAuthorization()
             calendarService.refreshAuthorization()
         }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "1.0"
+        let build = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "1"
+        return "\(version) (\(build))"
     }
 
     private func visibilityBinding(for scale: PlanningScale) -> Binding<Bool> {

@@ -18,8 +18,9 @@ enum TaskPriority: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var icon: PlancalIcon {
         switch self {
-        case .gentle, .important: .incomplete
-        case .essential: .essential
+        case .gentle: .priorityGentle
+        case .important: .priorityImportant
+        case .essential: .priorityEssential
         }
     }
 }
@@ -70,7 +71,7 @@ final class PlannerTask: Identifiable {
     }
 
     func belongs(to scale: PlanningScale, anchor: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
-        self.scale == scale && scale.interval(containing: anchor, calendar: calendar).contains(scheduledDate)
+        self.scale == scale && scale.contains(scheduledDate, inPeriodContaining: anchor, calendar: calendar)
     }
 
     func setCompleted(_ completed: Bool) {

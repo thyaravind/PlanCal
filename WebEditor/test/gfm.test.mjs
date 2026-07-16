@@ -35,5 +35,7 @@ test("ships a self-contained editor resource", async () => {
 
   assert.match(html, /plancalEditor/);
   assert.match(html, /markdownChanged/);
+  assert.match(html, /<script>window\.addEventListener\("DOMContentLoaded"/);
+  assert.doesNotMatch(html, /<script type="module"/);
   assert.doesNotMatch(html, /<script[^>]+src=["']https?:\/\//i);
 });

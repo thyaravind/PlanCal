@@ -6,7 +6,7 @@ Plancal is a native SwiftUI planner for iOS, iPadOS, and macOS 26. It combines M
 
 - Configurable day, week, month, quarter, and year planning horizons (days, weeks, and months are shown by default)
 - Inline quick task creation and in-place task editing within each planning period
-- Automatic carry-forward of unfinished work while preserving its original period
+- Configurable carry-forward of unfinished work while preserving its original period
 - Independent and period-specific WYSIWYG Markdown notes with Markdown typing shortcuts
 - All-day, timed, single-day, multi-day, and recurring events
 - Full EventKit access to show Apple Calendar events and sync Plancal events

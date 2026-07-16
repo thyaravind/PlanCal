@@ -22,10 +22,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Plancal shows your calendars alongside your plans and can keep events in sync.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>Plancal can add your planned events to Apple Calendar.</string>
+	<string>PlanCal can add your planned events to Apple Calendar.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

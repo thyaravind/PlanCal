@@ -1,6 +1,10 @@
 import SwiftUI
 import WebKit
 
+#if os(macOS)
+import AppKit
+#endif
+
 struct RichMarkdownEditor: View {
     @Binding var markdown: String
     let placeholder: String
@@ -16,20 +20,47 @@ struct RichMarkdownEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             formattingBar
 
-            CodeMirrorMarkdownView(
-                configuration: CodeMirrorConfiguration(
-                    markdown: $markdown,
-                    placeholder: placeholder,
-                    colorScheme: colorScheme,
-                    commandRequest: commandRequest,
-                    onRequestLink: { isEditingLink = true },
-                    onFocusChanged: onFocusChanged
-                )
-            )
+            editorSurface
             .frame(minHeight: minHeight)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .accessibilityLabel("Markdown note")
         }
+    }
+
+    @ViewBuilder
+    private var editorSurface: some View {
+        #if os(macOS)
+        ZStack(alignment: .topLeading) {
+            NativeMarkdownTextView(
+                configuration: NativeMarkdownConfiguration(
+                    markdown: $markdown,
+                    colorScheme: colorScheme,
+                    commandRequest: commandRequest,
+                    onFocusChanged: onFocusChanged
+                )
+            )
+
+            if markdown.isEmpty {
+                Text(placeholder)
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
+                    .allowsHitTesting(false)
+            }
+        }
+        #else
+        CodeMirrorMarkdownView(
+            configuration: CodeMirrorConfiguration(
+                markdown: $markdown,
+                placeholder: placeholder,
+                colorScheme: colorScheme,
+                commandRequest: commandRequest,
+                onRequestLink: { isEditingLink = true },
+                onFocusChanged: onFocusChanged
+            )
+        )
+        #endif
     }
 
     private var formattingBar: some View {
@@ -212,6 +243,392 @@ private enum MarkdownEditorCommand {
     }
 }
 
+#if os(macOS)
+private struct NativeMarkdownConfiguration {
+    var markdown: Binding<String>
+    var colorScheme: ColorScheme
+    var commandRequest: MarkdownEditorCommandRequest?
+    var onFocusChanged: (Bool) -> Void
+}
+
+private final class NativeMarkdownScrollView: NSScrollView {
+    override func layout() {
+        super.layout()
+        guard let textView = documentView as? NSTextView else { return }
+
+        let viewportSize = contentSize
+        textView.minSize = viewportSize
+        if textView.frame.width != viewportSize.width
+            || textView.frame.height < viewportSize.height {
+            textView.setFrameSize(
+                NSSize(
+                    width: viewportSize.width,
+                    height: max(textView.frame.height, viewportSize.height)
+                )
+            )
+        }
+    }
+}
+
+private struct NativeMarkdownTextView: NSViewRepresentable {
+    var configuration: NativeMarkdownConfiguration
+
+    func makeCoordinator() -> NativeMarkdownCoordinator {
+        NativeMarkdownCoordinator(configuration: configuration)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NativeMarkdownScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView(
+            frame: NSRect(x: 0, y: 0, width: 1, height: 240)
+        )
+        textView.delegate = context.coordinator
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.isRichText = true
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.usesFindBar = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.minSize = NSSize(width: 0, height: 240)
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainerInset = NSSize(width: 18, height: 16)
+        textView.textContainer?.containerSize = NSSize(
+            width: scrollView.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = true
+        textView.string = configuration.markdown.wrappedValue
+
+        scrollView.documentView = textView
+        context.coordinator.connect(to: textView)
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.update(configuration: configuration)
+    }
+}
+
+@MainActor
+private final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
+    private var configuration: NativeMarkdownConfiguration
+    private weak var textView: NSTextView?
+    private var lastCommandID: UUID?
+    private var isApplyingExternalUpdate = false
+
+    init(configuration: NativeMarkdownConfiguration) {
+        self.configuration = configuration
+    }
+
+    func connect(to textView: NSTextView) {
+        self.textView = textView
+        applyPresentation(to: textView)
+    }
+
+    func update(configuration: NativeMarkdownConfiguration) {
+        self.configuration = configuration
+        guard let textView else { return }
+
+        let externalMarkdown = configuration.markdown.wrappedValue
+        if textView.string != externalMarkdown {
+            let selectedRange = textView.selectedRange()
+            isApplyingExternalUpdate = true
+            textView.string = externalMarkdown
+            textView.setSelectedRange(
+                NSRange(
+                    location: min(selectedRange.location, textView.string.utf16.count),
+                    length: 0
+                )
+            )
+            isApplyingExternalUpdate = false
+        }
+
+        applyPresentation(to: textView)
+
+        if let request = configuration.commandRequest,
+           request.id != lastCommandID {
+            lastCommandID = request.id
+            perform(request.command, in: textView)
+        }
+    }
+
+    func textDidBeginEditing(_ notification: Notification) {
+        configuration.onFocusChanged(true)
+    }
+
+    func textDidEndEditing(_ notification: Notification) {
+        configuration.onFocusChanged(false)
+    }
+
+    func textDidChange(_ notification: Notification) {
+        guard !isApplyingExternalUpdate, let textView else { return }
+        if configuration.markdown.wrappedValue != textView.string {
+            configuration.markdown.wrappedValue = textView.string
+        }
+        applyPresentation(to: textView)
+    }
+
+    private func applyPresentation(to textView: NSTextView) {
+        guard let storage = textView.textStorage else { return }
+        let selection = textView.selectedRange()
+        let fullRange = NSRange(location: 0, length: storage.length)
+        let baseFont = NSFont.systemFont(ofSize: 15.5)
+        let textColor = NSColor.labelColor
+        let markerColor = NSColor.tertiaryLabelColor
+        let codeBackground = NSColor.controlAccentColor.withAlphaComponent(
+            configuration.colorScheme == .dark ? 0.2 : 0.1
+        )
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 4
+        paragraphStyle.paragraphSpacing = 3
+
+        storage.beginEditing()
+        storage.setAttributes(
+            [
+                .font: baseFont,
+                .foregroundColor: textColor,
+                .paragraphStyle: paragraphStyle
+            ],
+            range: fullRange
+        )
+
+        applyRegex(#"(?m)^(#{1,3})[ \t]+(.+)$"#, to: storage) { match in
+            let markerRange = match.range(at: 1)
+            let contentRange = match.range(at: 2)
+            let level = markerRange.length
+            let size: CGFloat = switch level {
+            case 1: 28
+            case 2: 23
+            default: 19
+            }
+            storage.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: size, weight: .bold),
+                    .foregroundColor: textColor
+                ],
+                range: contentRange
+            )
+            storage.addAttribute(.foregroundColor, value: markerColor, range: markerRange)
+        }
+
+        applyRegex(#"\*([^*\n]+)\*"#, to: storage) { match in
+            let range = match.range(at: 1)
+            storage.addAttribute(
+                .font,
+                value: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask),
+                range: range
+            )
+        }
+        applyRegex(#"\*\*([^*\n]+)\*\*"#, to: storage) { match in
+            storage.addAttribute(
+                .font,
+                value: NSFont.systemFont(ofSize: 15.5, weight: .bold),
+                range: match.range(at: 1)
+            )
+        }
+        applyRegex(#"~~([^~\n]+)~~"#, to: storage) { match in
+            storage.addAttribute(
+                .strikethroughStyle,
+                value: NSUnderlineStyle.single.rawValue,
+                range: match.range(at: 1)
+            )
+        }
+        applyRegex(#"`([^`\n]+)`"#, to: storage) { match in
+            let range = match.range(at: 1)
+            storage.addAttributes(
+                [
+                    .font: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular),
+                    .backgroundColor: codeBackground
+                ],
+                range: range
+            )
+        }
+        applyRegex(#"(?m)^>[ \t]?(.*)$"#, to: storage) { match in
+            storage.addAttributes(
+                [
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+                ],
+                range: match.range(at: 1)
+            )
+        }
+
+        storage.endEditing()
+
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        textView.insertionPointColor = .controlAccentColor
+        textView.selectedTextAttributes = [
+            .backgroundColor: NSColor.selectedTextBackgroundColor,
+            .foregroundColor: NSColor.selectedTextColor
+        ]
+        textView.typingAttributes = [
+            .font: baseFont,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+
+        let clampedLocation = min(selection.location, storage.length)
+        let clampedLength = min(selection.length, storage.length - clampedLocation)
+        textView.setSelectedRange(
+            NSRange(location: clampedLocation, length: clampedLength)
+        )
+    }
+
+    private func applyRegex(
+        _ pattern: String,
+        to storage: NSTextStorage,
+        apply: (NSTextCheckingResult) -> Void
+    ) {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let range = NSRange(location: 0, length: storage.length)
+        regex.enumerateMatches(in: storage.string, range: range) { match, _, _ in
+            guard let match else { return }
+            apply(match)
+        }
+    }
+
+    private func perform(_ command: MarkdownEditorCommand, in textView: NSTextView) {
+        switch command {
+        case .focus:
+            textView.window?.makeFirstResponder(textView)
+        case .bold:
+            wrapSelection(in: textView, prefix: "**", suffix: "**")
+        case .italic:
+            wrapSelection(in: textView, prefix: "*", suffix: "*")
+        case .strikethrough:
+            wrapSelection(in: textView, prefix: "~~", suffix: "~~")
+        case .inlineCode:
+            wrapSelection(in: textView, prefix: "`", suffix: "`")
+        case .heading(let level):
+            applyHeading(level, in: textView)
+        case .bulletList:
+            prefixSelectedLines(in: textView, with: "- ")
+        case .orderedList:
+            prefixSelectedLines(in: textView, with: "1. ")
+        case .taskList:
+            prefixSelectedLines(in: textView, with: "- [ ] ")
+        case .blockquote:
+            prefixSelectedLines(in: textView, with: "> ")
+        case .codeBlock:
+            wrapSelection(in: textView, prefix: "```\n", suffix: "\n```")
+        case .link(let destination):
+            let selection = textView.selectedRange()
+            if selection.length == 0 {
+                replaceSelection(
+                    in: textView,
+                    with: "[text](\(destination))",
+                    selectedOffset: 1,
+                    selectedLength: 4
+                )
+            } else {
+                wrapSelection(
+                    in: textView,
+                    prefix: "[",
+                    suffix: "](\(destination))"
+                )
+            }
+        }
+    }
+
+    private func wrapSelection(
+        in textView: NSTextView,
+        prefix: String,
+        suffix: String
+    ) {
+        let range = textView.selectedRange()
+        let selectedText = (textView.string as NSString).substring(with: range)
+        replaceSelection(
+            in: textView,
+            with: prefix + selectedText + suffix,
+            selectedOffset: prefix.utf16.count,
+            selectedLength: range.length
+        )
+    }
+
+    private func replaceSelection(
+        in textView: NSTextView,
+        with replacement: String,
+        selectedOffset: Int,
+        selectedLength: Int
+    ) {
+        let range = textView.selectedRange()
+        textView.textStorage?.replaceCharacters(in: range, with: replacement)
+        textView.setSelectedRange(
+            NSRange(
+                location: range.location + selectedOffset,
+                length: selectedLength
+            )
+        )
+        commitChange(in: textView)
+    }
+
+    private func applyHeading(_ level: Int, in textView: NSTextView) {
+        let selection = textView.selectedRange()
+        let source = textView.string as NSString
+        let lineRange = source.lineRange(for: selection)
+        let line = source.substring(with: lineRange)
+        let newline = line.hasSuffix("\n") ? "\n" : ""
+        let content = line
+            .trimmingCharacters(in: .newlines)
+            .replacingOccurrences(
+                of: #"^#{1,6}[ \t]+"#,
+                with: "",
+                options: .regularExpression
+            )
+        let prefix = level == 0 ? "" : String(repeating: "#", count: level) + " "
+        let replacement = prefix + content + newline
+        textView.textStorage?.replaceCharacters(in: lineRange, with: replacement)
+        textView.setSelectedRange(
+            NSRange(
+                location: lineRange.location + prefix.utf16.count,
+                length: content.utf16.count
+            )
+        )
+        commitChange(in: textView)
+    }
+
+    private func prefixSelectedLines(in textView: NSTextView, with prefix: String) {
+        let selection = textView.selectedRange()
+        let source = textView.string as NSString
+        let lineRange = source.lineRange(for: selection)
+        let lines = source.substring(with: lineRange)
+        let replacement = lines.replacingOccurrences(
+            of: #"(?m)^(?=.)"#,
+            with: prefix,
+            options: .regularExpression
+        )
+        textView.textStorage?.replaceCharacters(in: lineRange, with: replacement)
+        textView.setSelectedRange(
+            NSRange(location: lineRange.location, length: replacement.utf16.count)
+        )
+        commitChange(in: textView)
+    }
+
+    private func commitChange(in textView: NSTextView) {
+        if configuration.markdown.wrappedValue != textView.string {
+            configuration.markdown.wrappedValue = textView.string
+        }
+        applyPresentation(to: textView)
+        textView.window?.makeFirstResponder(textView)
+    }
+}
+#endif
+
 private struct CodeMirrorConfiguration {
     var markdown: Binding<String>
     var placeholder: String
@@ -358,6 +775,7 @@ private func makeCodeMirrorWebView(coordinator: CodeMirrorCoordinator) -> WKWebV
 
     #if os(macOS)
     webView.allowsMagnification = false
+    webView.underPageBackgroundColor = .clear
     #else
     webView.isOpaque = false
     webView.backgroundColor = .clear

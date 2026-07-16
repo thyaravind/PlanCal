@@ -6,10 +6,13 @@ enum RolloverService {
     @discardableResult
     static func rollForwardOutstandingTasks(
         _ tasks: [PlannerTask],
+        enabled: Bool = true,
         to date: Date = .now,
         calendar: Calendar = .autoupdatingCurrent,
         modelContext: ModelContext? = nil
     ) -> Int {
+        guard enabled else { return 0 }
+
         var changed = 0
 
         for task in tasks where !task.isCompleted {

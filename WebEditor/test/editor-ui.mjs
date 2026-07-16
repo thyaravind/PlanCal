@@ -15,8 +15,18 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage({ viewport: { width: 900, height: 620 } });
+  page.on("pageerror", (error) => {
+    console.error(`Editor page error: ${error.message}`);
+  });
   await page.goto(editorURL);
   await page.waitForFunction(() => Boolean(window.plancalEditor));
+  await page.evaluate(() => window.plancalEditor.setTheme("dark"));
+  assert.equal(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--editor-accent").trim()
+    ),
+    "rgb(105, 190, 255)"
+  );
 
   const source = [
     "### Focus",
