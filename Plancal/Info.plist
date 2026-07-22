@@ -28,6 +28,10 @@
 	<string>Plancal shows your calendars alongside your plans and can keep events in sync.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>PlanCal can add your planned events to Apple Calendar.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
