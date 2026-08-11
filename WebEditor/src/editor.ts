@@ -278,6 +278,45 @@ function insertLink(url: string): void {
   editor.focus();
 }
 
+function titleCase(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_match, boundary: string, letter: string) =>
+      boundary + letter.toLocaleUpperCase()
+    );
+}
+
+function changeCase(value: string): void {
+  const selection = editor.state.selection.main;
+  if (selection.empty) {
+    editor.focus();
+    return;
+  }
+
+  const selectedText = editor.state.sliceDoc(selection.from, selection.to);
+  const replacement = (() => {
+    switch (value) {
+      case "lowercase":
+        return selectedText.toLocaleLowerCase();
+      case "uppercase":
+        return selectedText.toLocaleUpperCase();
+      case "title":
+        return titleCase(selectedText);
+      default:
+        return selectedText;
+    }
+  })();
+
+  if (replacement !== selectedText) {
+    editor.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: replacement },
+      selection: EditorSelection.range(selection.from, selection.from + replacement.length),
+      userEvent: "input.format.case"
+    });
+  }
+  editor.focus();
+}
+
 function executeCommand(command: EditorCommand): void {
   switch (command.name) {
     case "bold":
@@ -314,6 +353,9 @@ function executeCommand(command: EditorCommand): void {
       break;
     case "link":
       insertLink(String(command.value ?? ""));
+      break;
+    case "changeCase":
+      changeCase(String(command.value ?? ""));
       break;
     case "focus":
       editor.focus();

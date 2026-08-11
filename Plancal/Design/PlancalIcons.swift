@@ -16,6 +16,7 @@ enum PlancalIcon: Hashable {
     case disclosure
     case previous
     case next
+    case search
     case confirm
     case edit
     case delete
@@ -38,6 +39,7 @@ enum PlancalIcon: Hashable {
     case priorityImportant
     case priorityEssential
     case text
+    case letterCase
     case heading1
     case heading2
     case heading3
@@ -66,6 +68,7 @@ enum PlancalIcon: Hashable {
         case .disclosure: .caretRight
         case .previous: .caretLeft
         case .next: .caretRight
+        case .search: .magnifyingGlass
         case .confirm: .check
         case .edit: .pencilSimple
         case .delete: .trash
@@ -88,6 +91,7 @@ enum PlancalIcon: Hashable {
         case .priorityImportant: .arrowUp
         case .priorityEssential: .warningOctagon
         case .text: .paragraph
+        case .letterCase: .textAa
         case .heading1: .textHOne
         case .heading2: .textHTwo
         case .heading3: .textHThree

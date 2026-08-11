@@ -57,11 +57,7 @@ struct TodayView: View {
     }
 
     private var carriedTasks: [PlannerTask] {
-        tasks.filter {
-            !$0.isCompleted
-                && $0.carryCount > 0
-                && $0.scale.contains($0.scheduledDate, inPeriodContaining: today)
-        }
+        TodayTaskFilter.carriedDailyTasks(from: tasks, on: today)
     }
 
     private var horizonTasks: [PlannerTask] {
@@ -825,6 +821,20 @@ struct TodayView: View {
         guard let firstEnabledScale = enabledHorizonScales.first else { return }
         selectedHorizonScale = firstEnabledScale
         selectedHorizonScaleStorage = firstEnabledScale.rawValue
+    }
+}
+
+enum TodayTaskFilter {
+    static func carriedDailyTasks(
+        from tasks: [PlannerTask],
+        on date: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [PlannerTask] {
+        tasks.filter {
+            !$0.isCompleted
+                && $0.carryCount > 0
+                && $0.belongs(to: .daily, anchor: date, calendar: calendar)
+        }
     }
 }
 

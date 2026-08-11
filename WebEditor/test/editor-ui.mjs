@@ -61,6 +61,16 @@ try {
   await page.keyboard.press("Meta+B");
   assert.equal(await page.evaluate(() => window.plancalEditor.getContent()), "**important**");
 
+  await page.evaluate(() => window.plancalEditor.setContent("mIXed cASE"));
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Meta+A");
+  await page.evaluate(() => window.plancalEditor.command({ name: "changeCase", value: "title" }));
+  assert.equal(await page.evaluate(() => window.plancalEditor.getContent()), "Mixed Case");
+  await page.evaluate(() => window.plancalEditor.command({ name: "changeCase", value: "uppercase" }));
+  assert.equal(await page.evaluate(() => window.plancalEditor.getContent()), "MIXED CASE");
+  await page.evaluate(() => window.plancalEditor.command({ name: "changeCase", value: "lowercase" }));
+  assert.equal(await page.evaluate(() => window.plancalEditor.getContent()), "mixed case");
+
   await page.evaluate((markdown) => window.plancalEditor.setContent(markdown), source);
   await lines.nth(1).click();
   const renderedInlineMarkdown = await lines.last().innerText();

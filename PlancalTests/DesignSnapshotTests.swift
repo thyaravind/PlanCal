@@ -82,6 +82,70 @@ final class DesignSnapshotTests: XCTestCase {
         XCTAssertEqual(layoutWidth, 390)
     }
 
+    func testPeriodNoteCollectionRendersAsAGridAndCompactList() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.mainContext
+        let anchor = PlanningScale.monthly.interval(containing: .now).start
+        let defaultNote = MarkdownNote(
+            title: "Monthly direction",
+            markdown: "## Focus\n\nBuild the smallest thing that makes the month feel meaningful.",
+            scope: .period,
+            scale: .monthly,
+            anchorDate: anchor
+        )
+        defaultNote.createdAt = anchor
+        let reviewNote = MarkdownNote(
+            title: "Review notes",
+            markdown: "### Learnings\n\n- Keep momentum visible\n- Protect deliberate work",
+            scope: .period,
+            scale: .monthly,
+            anchorDate: anchor
+        )
+        reviewNote.isPinned = true
+        reviewNote.createdAt = Calendar.autoupdatingCurrent.date(
+            byAdding: .minute,
+            value: 1,
+            to: anchor
+        ) ?? anchor
+        context.insert(defaultNote)
+        context.insert(reviewNote)
+        try context.save()
+
+        let notes = PeriodNoteResolver.notes(
+            from: [reviewNote, defaultNote],
+            scale: .monthly,
+            anchorDate: anchor
+        )
+        let desktop = PeriodNotesSection(
+            notes: notes,
+            scale: .monthly,
+            anchorDate: anchor
+        )
+        .modelContainer(persistence.container)
+        .frame(width: 900, height: 420, alignment: .top)
+
+        let compact = PeriodNotesSection(
+            notes: notes,
+            scale: .monthly,
+            anchorDate: anchor
+        )
+        .modelContainer(persistence.container)
+        .frame(width: 390, height: 680, alignment: .top)
+
+        try render(
+            desktop,
+            width: 900,
+            height: 420,
+            to: "/tmp/plancal-period-notes-grid.png"
+        )
+        try render(
+            compact,
+            width: 390,
+            height: 680,
+            to: "/tmp/plancal-period-notes-list.png"
+        )
+    }
+
     private func seedPlanner(in context: ModelContext) throws {
         let interval = PlanningScale.weekly.interval(containing: .now)
         let firstDay = interval.start

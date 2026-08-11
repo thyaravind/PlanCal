@@ -32,18 +32,15 @@ struct PlanningScaleControl: View {
 
     private func scaleButtons(usesFullLabels: Bool) -> some View {
         HStack(spacing: 2) {
-            ForEach(scales) { scale in
-                PlanningScaleButton(
-                    scale: scale,
-                    isSelected: scale == selection,
-                    usesFullLabel: usesFullLabels,
-                    selectionNamespace: selectedScale
-                ) {
-                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
-                        selection = scale
-                    }
-                }
-            }
+            // ViewThatFits measures its alternatives on SwiftUI's async renderer.
+            // Avoid an escaping ForEach content closure here: with the project's
+            // MainActor default isolation, SwiftUI can otherwise invoke that
+            // closure off-main while expanding the lazily stored children.
+            scaleButton(at: 0, usesFullLabels: usesFullLabels)
+            scaleButton(at: 1, usesFullLabels: usesFullLabels)
+            scaleButton(at: 2, usesFullLabels: usesFullLabels)
+            scaleButton(at: 3, usesFullLabels: usesFullLabels)
+            scaleButton(at: 4, usesFullLabels: usesFullLabels)
         }
         .padding(3)
         .background(.ultraThinMaterial, in: Capsule())
@@ -56,6 +53,23 @@ struct PlanningScaleControl: View {
         .frame(height: 38)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Planning scale")
+    }
+
+    @ViewBuilder
+    private func scaleButton(at index: Int, usesFullLabels: Bool) -> some View {
+        if scales.indices.contains(index) {
+            let scale = scales[index]
+            PlanningScaleButton(
+                scale: scale,
+                isSelected: scale == selection,
+                usesFullLabel: usesFullLabels,
+                selectionNamespace: selectedScale
+            ) {
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
+                    selection = scale
+                }
+            }
+        }
     }
 
     private var requiresCompactLabels: Bool {

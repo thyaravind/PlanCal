@@ -88,6 +88,24 @@ struct RichMarkdownEditor: View {
                 .plancalHoverEffect(scale: 1.025)
                 .help("Choose a text style, or type #, ##, or ### followed by a space")
 
+                Menu {
+                    ForEach(MarkdownLetterCase.allCases) { letterCase in
+                        Button(letterCase.title) {
+                            send(.changeCase(letterCase))
+                        }
+                    }
+                } label: {
+                    PlancalNativeGlyph(icon: .letterCase, size: 18)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .contentShape(Circle())
+                .menuIndicator(.hidden)
+                .plancalHoverEffect(scale: 1.08)
+                .accessibilityLabel("Change case")
+                .help("Change the casing of selected text")
+
                 Divider()
                     .frame(height: 22)
                     .padding(.horizontal, 3)
@@ -199,6 +217,55 @@ private struct MarkdownEditorCommandRequest {
     let command: MarkdownEditorCommand
 }
 
+enum MarkdownLetterCase: String, CaseIterable, Identifiable {
+    case lowercase
+    case uppercase
+    case title
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .lowercase:
+            "lowercase"
+        case .uppercase:
+            "UPPERCASE"
+        case .title:
+            "Title Case"
+        }
+    }
+
+    nonisolated func transform(_ text: String) -> String {
+        switch self {
+        case .lowercase:
+            text.lowercased()
+        case .uppercase:
+            text.uppercased()
+        case .title:
+            Self.titleCase(text)
+        }
+    }
+
+    nonisolated private static func titleCase(_ text: String) -> String {
+        var result = ""
+        var beginsWord = true
+
+        for character in text.lowercased() {
+            let fragment = String(character)
+            let isAlphanumeric = fragment.rangeOfCharacter(from: .alphanumerics) != nil
+
+            if isAlphanumeric, beginsWord {
+                result.append(contentsOf: fragment.uppercased())
+            } else {
+                result.append(contentsOf: fragment)
+            }
+            beginsWord = !isAlphanumeric
+        }
+
+        return result
+    }
+}
+
 private enum MarkdownEditorCommand {
     case focus
     case bold
@@ -212,6 +279,7 @@ private enum MarkdownEditorCommand {
     case blockquote
     case codeBlock
     case link(String)
+    case changeCase(MarkdownLetterCase)
 
     var payload: [String: Any] {
         switch self {
@@ -239,6 +307,8 @@ private enum MarkdownEditorCommand {
             ["name": "codeBlock"]
         case .link(let destination):
             ["name": "link", "value": destination]
+        case .changeCase(let letterCase):
+            ["name": "changeCase", "value": letterCase.rawValue]
         }
     }
 }
@@ -542,7 +612,31 @@ private final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
                     suffix: "](\(destination))"
                 )
             }
+        case .changeCase(let letterCase):
+            changeCase(letterCase, in: textView)
         }
+    }
+
+    private func changeCase(_ letterCase: MarkdownLetterCase, in textView: NSTextView) {
+        let range = textView.selectedRange()
+        guard range.length > 0 else {
+            textView.window?.makeFirstResponder(textView)
+            return
+        }
+
+        let selectedText = (textView.string as NSString).substring(with: range)
+        let replacement = letterCase.transform(selectedText)
+        guard replacement != selectedText else {
+            textView.window?.makeFirstResponder(textView)
+            return
+        }
+
+        replaceSelection(
+            in: textView,
+            with: replacement,
+            selectedOffset: 0,
+            selectedLength: replacement.utf16.count
+        )
     }
 
     private func wrapSelection(

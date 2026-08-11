@@ -9,11 +9,11 @@ enum PlancalDesign {
 
     static func tint(for scale: PlanningScale) -> Color {
         switch scale {
-        case .daily: .orange
+        case .daily: .teal
         case .weekly: .blue
         case .monthly: .indigo
         case .quarterly: .purple
-        case .yearly: .teal
+        case .yearly: .red
         }
     }
 }

@@ -110,6 +110,41 @@ final class PlanningScaleTests: XCTestCase {
     }
 
     @MainActor
+    func testTodayCarryoverOnlyIncludesDailyTasks() throws {
+        let current = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 15, hour: 9)))
+        let tasks = [
+            PlannerTask(
+                title: "Daily carryover",
+                scale: .daily,
+                scheduledDate: try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 14)))
+            ),
+            PlannerTask(
+                title: "Weekly carryover",
+                scale: .weekly,
+                scheduledDate: try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 6)))
+            ),
+            PlannerTask(
+                title: "Monthly carryover",
+                scale: .monthly,
+                scheduledDate: try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 6, day: 1)))
+            ),
+        ]
+
+        XCTAssertEqual(
+            RolloverService.rollForwardOutstandingTasks(tasks, to: current, calendar: calendar),
+            3
+        )
+
+        let carriedDailyTasks = TodayTaskFilter.carriedDailyTasks(
+            from: tasks,
+            on: current,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(carriedDailyTasks.map(\.title), ["Daily carryover"])
+    }
+
+    @MainActor
     func testCompletedTaskDoesNotRollForward() throws {
         let original = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 6, day: 1)))
         let current = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 15)))

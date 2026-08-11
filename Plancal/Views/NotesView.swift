@@ -6,8 +6,7 @@ struct NotesView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MarkdownNote.updatedAt, order: .reverse) private var notes: [MarkdownNote]
     @State private var query = ""
-    @State private var isAddingNote = false
-    @State private var editingNote: MarkdownNote?
+    @State private var editorPresentation: StandaloneNoteEditorPresentation?
 
     private var visibleNotes: [MarkdownNote] {
         let filtered = query.isEmpty ? notes : notes.filter {
@@ -25,11 +24,14 @@ struct NotesView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     PageHeader(eyebrow: "Markdown", title: "Notes", subtitle: "Ideas, reflections, and context—kept close to the plan.")
+                    notesSearchField
                     if visibleNotes.isEmpty {
                         EmptyStateCard(icon: .notes, title: "A quiet page", message: query.isEmpty ? "Create a Markdown note whenever an idea arrives." : "No notes match your search.")
                     } else {
                         ForEach(visibleNotes) { note in
-                            Button { editingNote = note } label: {
+                            Button {
+                                editorPresentation = StandaloneNoteEditorPresentation(note: note)
+                            } label: {
                                 NoteCard(note: note)
                             }
                             .buttonStyle(.plain)
@@ -56,10 +58,11 @@ struct NotesView: View {
             }
         }
         .adaptiveNavigationTitle("Notes")
-        .searchable(text: $query, prompt: "Search notes")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { isAddingNote = true } label: {
+                Button {
+                    editorPresentation = StandaloneNoteEditorPresentation(note: nil)
+                } label: {
                     PlancalGlyph(icon: .newNote, weight: .bold, size: 18)
                         .accessibilityLabel("New note")
                 }
@@ -68,11 +71,57 @@ struct NotesView: View {
                     .keyboardShortcut("n", modifiers: .command)
             }
         }
-        .sheet(isPresented: $isAddingNote) {
-            NoteEditor()
+        .navigationDestination(item: $editorPresentation) { presentation in
+            NoteEditor(
+                note: presentation.note,
+                showsCancelAction: false
+            )
         }
-        .sheet(item: $editingNote) { note in
-            NoteEditor(note: note)
+    }
+
+    private var notesSearchField: some View {
+        HStack(spacing: 10) {
+            PlancalGlyph(icon: .search, size: 18)
+                .foregroundStyle(.secondary)
+
+            TextField("Search notes", text: $query)
+                .textFieldStyle(.plain)
+
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    PlancalGlyph(icon: .close, weight: .bold, size: 14)
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Clear search")
+            }
         }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: 360, minHeight: 42)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct StandaloneNoteEditorPresentation: Identifiable, Hashable {
+    let id = UUID()
+    let note: MarkdownNote?
+
+    static func == (
+        lhs: StandaloneNoteEditorPresentation,
+        rhs: StandaloneNoteEditorPresentation
+    ) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 enum AppSection: String, CaseIterable, Identifiable {
     case today
     case plan
+    case notes
     case settings
 
     var id: Self { self }
@@ -12,6 +13,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: "Today"
         case .plan: "Calendar"
+        case .notes: "Notes"
         case .settings: "Settings"
         }
     }
@@ -20,6 +22,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: .today
         case .plan: .plan
+        case .notes: .notes
         case .settings: .settings
         }
     }
@@ -96,6 +99,7 @@ struct RootView: View {
         TabView(selection: $selectedCompactSection) {
             compactTab(.today) { TodayView() }
             compactTab(.plan) { PlannerView() }
+            compactTab(.notes) { NotesView() }
             compactTab(.settings) { SettingsView() }
         }
     }
@@ -121,6 +125,7 @@ struct RootView: View {
         switch section {
         case .today: TodayView()
         case .plan: PlannerView()
+        case .notes: NotesView()
         case .settings: SettingsView()
         }
     }

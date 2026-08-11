@@ -1,12 +1,12 @@
 import SwiftData
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct PlannerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var modelContext
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #endif
 
     @Query(sort: \PlannerTask.createdAt, order: .reverse) private var tasks: [PlannerTask]
     @Query(sort: \MarkdownNote.updatedAt, order: .reverse) private var notes: [MarkdownNote]
@@ -43,12 +43,12 @@ struct PlannerView: View {
         openPeriodTasks.filter { $0.id != quickPersistedTask?.id }
     }
 
-    private var periodNote: MarkdownNote? {
-        notes.first {
-            $0.scope == .period
-                && $0.scale == scale
-                && scale.contains($0.anchorDate, inPeriodContaining: anchorDate)
-        }
+    private var periodNotes: [MarkdownNote] {
+        PeriodNoteResolver.notes(
+            from: notes,
+            scale: scale,
+            anchorDate: anchorDate
+        )
     }
 
     private var periodIdentity: String {
@@ -74,7 +74,7 @@ struct PlannerView: View {
 
     private var showsPageHeader: Bool {
         #if os(iOS)
-        false
+        UIDevice.current.userInterfaceIdiom == .pad
         #else
         true
         #endif
@@ -82,7 +82,7 @@ struct PlannerView: View {
 
     private var isCompactMobile: Bool {
         #if os(iOS)
-        horizontalSizeClass == .compact
+        UIDevice.current.userInterfaceIdiom == .phone
         #else
         false
         #endif
@@ -159,8 +159,8 @@ struct PlannerView: View {
                             }
                             .frame(width: contentWidth, alignment: .leading)
 
-                            InlinePeriodNote(
-                                note: periodNote,
+                            PeriodNotesSection(
+                                notes: periodNotes,
                                 scale: scale,
                                 anchorDate: anchorDate
                             ) { isFocused in
@@ -200,20 +200,6 @@ struct PlannerView: View {
                             tint: horizonTint,
                             action: goToToday
                         )
-                    }
-                }
-            } else {
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 8) {
-                        GoToCurrentPeriodButton(
-                            tint: horizonTint,
-                            action: goToToday
-                        )
-                        .opacity(isCurrentPeriod ? 0 : 1)
-                        .allowsHitTesting(!isCurrentPeriod)
-                        .accessibilityHidden(isCurrentPeriod)
-
-                        PlanningScaleControl(scales: visibleScales, selection: $scale)
                     }
                 }
             }
@@ -256,6 +242,14 @@ struct PlannerView: View {
             Spacer(minLength: 24)
 
             HStack(spacing: 10) {
+                #if os(iOS)
+                if !isCurrentPeriod {
+                    GoToCurrentPeriodButton(
+                        tint: horizonTint,
+                        action: goToToday
+                    )
+                }
+                #else
                 GoToCurrentPeriodButton(
                     tint: horizonTint,
                     action: goToToday
@@ -263,6 +257,7 @@ struct PlannerView: View {
                 .opacity(isCurrentPeriod ? 0 : 1)
                 .allowsHitTesting(!isCurrentPeriod)
                 .accessibilityHidden(isCurrentPeriod)
+                #endif
 
                 PlanningScaleControl(scales: visibleScales, selection: $scale)
             }
