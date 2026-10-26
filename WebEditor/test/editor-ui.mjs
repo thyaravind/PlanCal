@@ -71,6 +71,29 @@ try {
   await page.evaluate(() => window.plancalEditor.command({ name: "changeCase", value: "lowercase" }));
   assert.equal(await page.evaluate(() => window.plancalEditor.getContent()), "mixed case");
 
+  await page.evaluate(() => window.plancalEditor.setContent("First\nSecond\nThird"));
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Meta+A");
+  await page.evaluate(() => window.plancalEditor.command({ name: "taskList" }));
+  assert.equal(
+    await page.evaluate(() => window.plancalEditor.getContent()),
+    "- [ ] First\n- [ ] Second\n- [ ] Third"
+  );
+  await page.evaluate(() => window.plancalEditor.command({ name: "taskList" }));
+  assert.equal(
+    await page.evaluate(() => window.plancalEditor.getContent()),
+    "First\nSecond\nThird"
+  );
+
+  await page.evaluate(() => window.plancalEditor.setContent("- First\n* Second\n1. Third"));
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Meta+A");
+  await page.evaluate(() => window.plancalEditor.command({ name: "taskList" }));
+  assert.equal(
+    await page.evaluate(() => window.plancalEditor.getContent()),
+    "- [ ] First\n- [ ] Second\n- [ ] Third"
+  );
+
   await page.evaluate((markdown) => window.plancalEditor.setContent(markdown), source);
   await lines.nth(1).click();
   const renderedInlineMarkdown = await lines.last().innerText();

@@ -71,6 +71,58 @@ final class PlanningScaleTests: XCTestCase {
         XCTAssertTrue(PlanningScale.daily.contains(july17, inPeriodContaining: july17, calendar: calendar))
     }
 
+    func testCurrentDailyAnchorAdvancesWhenTheDayChanges() throws {
+        let july15 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 15, hour: 23)))
+        let july16 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 16, hour: 1)))
+
+        let resolved = CurrentPeriodAnchorResolver.resolvedAnchor(
+            currentAnchor: PlanningScale.daily.interval(containing: july15, calendar: calendar).start,
+            scale: .daily,
+            previousNow: july15,
+            currentNow: july16,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            resolved,
+            PlanningScale.daily.interval(containing: july16, calendar: calendar).start
+        )
+    }
+
+    func testCurrentMonthlyAnchorAdvancesWhenTheMonthChanges() throws {
+        let july31 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 31, hour: 23)))
+        let august1 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 1, hour: 1)))
+
+        let resolved = CurrentPeriodAnchorResolver.resolvedAnchor(
+            currentAnchor: PlanningScale.monthly.interval(containing: july31, calendar: calendar).start,
+            scale: .monthly,
+            previousNow: july31,
+            currentNow: august1,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            resolved,
+            PlanningScale.monthly.interval(containing: august1, calendar: calendar).start
+        )
+    }
+
+    func testPeriodRolloverDoesNotMoveAnAnchorTheUserIsBrowsing() throws {
+        let july10 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 10)))
+        let july15 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 15, hour: 23)))
+        let july16 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 16, hour: 1)))
+
+        let resolved = CurrentPeriodAnchorResolver.resolvedAnchor(
+            currentAnchor: july10,
+            scale: .daily,
+            previousNow: july15,
+            currentNow: july16,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(resolved, july10)
+    }
+
     @MainActor
     func testTaskAtNextPeriodBoundaryDoesNotBelongToPreviousPeriod() throws {
         let july16 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))

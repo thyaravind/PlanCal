@@ -180,3 +180,23 @@ enum PlanningScale: String, CaseIterable, Codable, Identifiable, Sendable {
         return DateInterval(start: start, end: end)
     }
 }
+
+enum CurrentPeriodAnchorResolver {
+    nonisolated static func resolvedAnchor(
+        currentAnchor: Date,
+        scale: PlanningScale,
+        previousNow: Date,
+        currentNow: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        guard scale.contains(
+            previousNow,
+            inPeriodContaining: currentAnchor,
+            calendar: calendar
+        ) else {
+            return currentAnchor
+        }
+
+        return scale.interval(containing: currentNow, calendar: calendar).start
+    }
+}
