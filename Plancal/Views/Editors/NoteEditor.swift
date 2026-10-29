@@ -2,14 +2,12 @@ import SwiftData
 import SwiftUI
 
 struct NoteEditor: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     private let note: MarkdownNote?
     private let locksPeriodAssignment: Bool
-    private let showsCancelAction: Bool
     private let onSave: (MarkdownNote) -> Void
-    private let onCancel: () -> Void
+    @State private var persistedNote: MarkdownNote?
     @State private var title: String
     @State private var markdown: String
     @State private var scope: NoteScope
@@ -23,15 +21,12 @@ struct NoteEditor: View {
         initialScale: PlanningScale = .daily,
         initialDate: Date = .now,
         locksPeriodAssignment: Bool = false,
-        showsCancelAction: Bool = true,
-        onSave: @escaping (MarkdownNote) -> Void = { _ in },
-        onCancel: @escaping () -> Void = {}
+        onSave: @escaping (MarkdownNote) -> Void = { _ in }
     ) {
         self.note = note
         self.locksPeriodAssignment = locksPeriodAssignment
-        self.showsCancelAction = showsCancelAction
         self.onSave = onSave
-        self.onCancel = onCancel
+        _persistedNote = State(initialValue: note)
         _title = State(initialValue: note?.title ?? "")
         _markdown = State(initialValue: note?.markdown ?? "")
         _scope = State(initialValue: note?.scope ?? initialScope)
@@ -103,24 +98,18 @@ struct NoteEditor: View {
             }
         }
         .navigationTitle(note == nil ? "New note" : "Edit note")
-        .toolbar {
-            if showsCancelAction {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        onCancel()
-                        dismiss()
-                    }
-                        .keyboardShortcut(.cancelAction)
-                }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }
-                    .buttonStyle(.glassProminent)
-                    .keyboardShortcut("s", modifiers: .command)
+        .platformEditorFrame(minWidth: 420, idealWidth: 680, minHeight: 620)
+        .task(id: autosaveRevision) {
+            do {
+                try await Task.sleep(for: .milliseconds(600))
+                persistDraft()
+            } catch {
+                // A newer edit cancels this pending autosave.
             }
         }
-        .platformEditorFrame(minWidth: 420, idealWidth: 680, minHeight: 620)
-        .interactiveDismissDisabled(locksPeriodAssignment && note == nil)
+        .onDisappear {
+            persistDraft()
+        }
     }
 
     private var metadataFormHeight: CGFloat {
@@ -130,36 +119,37 @@ struct NoteEditor: View {
         return scope == .period ? 390 : 286
     }
 
-    private func save() {
-        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedAnchor = scope == .period
-            ? scale.interval(containing: anchorDate).start
-            : anchorDate
-        let savedNote: MarkdownNote
+    private var autosaveRevision: String {
+        [
+            title,
+            markdown,
+            scope.rawValue,
+            scale.rawValue,
+            String(anchorDate.timeIntervalSinceReferenceDate),
+            String(isPinned)
+        ].joined(separator: "|")
+    }
 
-        if let note {
-            note.title = cleanTitle.isEmpty ? "Untitled note" : cleanTitle
-            note.markdown = markdown
-            note.scope = scope
-            note.scale = scale
-            note.anchorDate = normalizedAnchor
-            note.isPinned = isPinned
-            note.updatedAt = .now
-            savedNote = note
-        } else {
-            let newNote = MarkdownNote(
-                title: cleanTitle.isEmpty ? "Untitled note" : cleanTitle,
-                markdown: markdown,
-                scope: scope,
-                scale: scale,
-                anchorDate: normalizedAnchor
-            )
-            newNote.isPinned = isPinned
-            modelContext.insert(newNote)
-            savedNote = newNote
+    private var draft: NoteEditorDraft {
+        NoteEditorDraft(
+            title: title,
+            markdown: markdown,
+            scope: scope,
+            scale: scale,
+            anchorDate: anchorDate,
+            isPinned: isPinned
+        )
+    }
+
+    private func persistDraft() {
+        let result = NoteEditorPersistence.persist(
+            existing: persistedNote,
+            draft: draft,
+            modelContext: modelContext
+        )
+        persistedNote = result.note
+        if result.didSave, let savedNote = result.note {
+            onSave(savedNote)
         }
-        try? modelContext.save()
-        onSave(savedNote)
-        dismiss()
     }
 }

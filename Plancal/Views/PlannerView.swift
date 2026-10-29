@@ -7,6 +7,7 @@ import UIKit
 struct PlannerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @Query(sort: \PlannerTask.createdAt, order: .reverse) private var tasks: [PlannerTask]
     @Query(sort: \MarkdownNote.updatedAt, order: .reverse) private var notes: [MarkdownNote]
@@ -15,6 +16,7 @@ struct PlannerView: View {
     @AppStorage("calendar.completedTasksExpanded") private var showsCompletedTasks = true
     @State private var scale: PlanningScale = .daily
     @State private var anchorDate = Date.now
+    @State private var observedNow = Date.now
     @State private var isQuickAddingTask = false
     @State private var quickTaskTitle = ""
     @State private var quickTaskScale = PlanningScale.daily
@@ -207,6 +209,13 @@ struct PlannerView: View {
         }
         .onAppear {
             restoreSelectedScale()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            refreshCurrentPeriod()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            refreshCurrentPeriod()
         }
         .onChange(of: visibleScaleStorage) { _, _ in
             restoreSelectedScale()
@@ -448,8 +457,25 @@ struct PlannerView: View {
     }
 
     private func goToToday() {
+        let now = Date.now
+        observedNow = now
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) {
-            anchorDate = scale.interval(containing: .now).start
+            anchorDate = scale.interval(containing: now).start
+        }
+    }
+
+    private func refreshCurrentPeriod(at now: Date = .now) {
+        let resolvedAnchor = CurrentPeriodAnchorResolver.resolvedAnchor(
+            currentAnchor: anchorDate,
+            scale: scale,
+            previousNow: observedNow,
+            currentNow: now
+        )
+        observedNow = now
+
+        guard resolvedAnchor != anchorDate else { return }
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) {
+            anchorDate = resolvedAnchor
         }
     }
 
