@@ -248,18 +248,97 @@ function replaceSelection(open: string, close = open): boolean {
   return true;
 }
 
-function setLinePrefix(pattern: RegExp, prefix: string): boolean {
+type BlockStyle =
+  | { kind: "heading"; level: number }
+  | { kind: "bulletList" }
+  | { kind: "orderedList" }
+  | { kind: "taskList" }
+  | { kind: "blockquote" };
+
+function blockPattern(style: BlockStyle): RegExp {
+  switch (style.kind) {
+    case "heading":
+      return style.level > 0
+        ? new RegExp(`^#{${Math.min(6, style.level)}}[ \\t]+`)
+        : /^#{1,6}[ \t]+/;
+    case "bulletList":
+      return /^[-+*][ \t]+(?!\[[ xX]\][ \t]+)/;
+    case "orderedList":
+      return /^\d+[.)][ \t]+/;
+    case "taskList":
+      return /^[-+*][ \t]+\[[ xX]\][ \t]+/;
+    case "blockquote":
+      return /^>[ \t]+/;
+  }
+}
+
+function blockPrefix(style: BlockStyle): string {
+  switch (style.kind) {
+    case "heading":
+      return style.level > 0 ? `${"#".repeat(Math.min(6, style.level))} ` : "";
+    case "bulletList":
+      return "- ";
+    case "orderedList":
+      return "1. ";
+    case "taskList":
+      return "- [ ] ";
+    case "blockquote":
+      return "> ";
+  }
+}
+
+function stripBlockPrefix(content: string, style: BlockStyle): string {
+  switch (style.kind) {
+    case "heading":
+      return content.replace(/^#{1,6}[ \t]+/, "");
+    case "bulletList":
+    case "orderedList":
+    case "taskList":
+      return content.replace(
+        /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+)/,
+        ""
+      );
+    case "blockquote":
+      return content.replace(/^>[ \t]+/, "");
+  }
+}
+
+function transformBlock(text: string, style: BlockStyle): string {
+  const lines = text.split("\n");
+  const meaningfulLines = lines.filter((line) => line.trim().length > 0);
+  if (meaningfulLines.length === 0) return text;
+
+  const pattern = blockPattern(style);
+  const removesStyle = meaningfulLines.every((line) => pattern.test(line.trimStart()));
+  const prefix = blockPrefix(style);
+
+  return lines
+    .map((line) => {
+      if (line.trim().length === 0) return line;
+      const indentation = line.match(/^[ \t]*/)?.[0] ?? "";
+      const content = stripBlockPrefix(line.slice(indentation.length), style);
+      return indentation + (removesStyle ? "" : prefix) + content;
+    })
+    .join("\n");
+}
+
+function formatSelectedLines(style: BlockStyle): boolean {
   const state = editor.state;
   const selection = state.selection.main;
-  const line = state.doc.lineAt(selection.head);
-  const match = pattern.exec(line.text);
-  const existingPrefixLength = match?.[0].length ?? 0;
-  const replacement = match?.[0] === prefix ? "" : prefix;
-  const cursorOffset = Math.max(0, selection.head - line.from - existingPrefixLength);
+  const firstLine = state.doc.lineAt(selection.from);
+  const effectiveEnd = selection.to > selection.from ? selection.to - 1 : selection.to;
+  const lastLine = state.doc.lineAt(effectiveEnd);
+  const selectedLines = state.sliceDoc(firstLine.from, lastLine.to);
+  const replacement = transformBlock(selectedLines, style);
+
+  if (replacement === selectedLines) {
+    editor.focus();
+    return true;
+  }
 
   editor.dispatch({
-    changes: { from: line.from, to: line.from + existingPrefixLength, insert: replacement },
-    selection: EditorSelection.cursor(line.from + replacement.length + cursorOffset),
+    changes: { from: firstLine.from, to: lastLine.to, insert: replacement },
+    selection: EditorSelection.range(firstLine.from, firstLine.from + replacement.length),
     userEvent: "input.format.block"
   });
   editor.focus();
@@ -333,20 +412,20 @@ function executeCommand(command: EditorCommand): void {
       break;
     case "heading": {
       const level = Math.min(6, Math.max(0, Number(command.value ?? 0)));
-      setLinePrefix(/^#{1,6}\s+/, level === 0 ? "" : `${"#".repeat(level)} `);
+      formatSelectedLines({ kind: "heading", level });
       break;
     }
     case "bulletList":
-      setLinePrefix(/^\s*[-+*]\s+(?!\[[ xX]\])/, "- ");
+      formatSelectedLines({ kind: "bulletList" });
       break;
     case "orderedList":
-      setLinePrefix(/^\s*\d+[.)]\s+/, "1. ");
+      formatSelectedLines({ kind: "orderedList" });
       break;
     case "taskList":
-      setLinePrefix(/^\s*[-+*]\s+\[[ xX]\]\s+/, "- [ ] ");
+      formatSelectedLines({ kind: "taskList" });
       break;
     case "blockquote":
-      setLinePrefix(/^\s*>\s+/, "> ");
+      formatSelectedLines({ kind: "blockquote" });
       break;
     case "codeBlock":
       replaceSelection("```\n", "\n```");

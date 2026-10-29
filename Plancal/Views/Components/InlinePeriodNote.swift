@@ -89,14 +89,8 @@ struct PeriodNotesSection: View {
                 initialScale: scale,
                 initialDate: scale.interval(containing: anchorDate).start,
                 locksPeriodAssignment: true,
-                showsCancelAction: false,
                 onSave: { _ in
                     revealsCollection = true
-                },
-                onCancel: {
-                    if notes.count <= 1 {
-                        revealsCollection = false
-                    }
                 }
             )
         }

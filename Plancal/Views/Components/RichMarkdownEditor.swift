@@ -585,15 +585,15 @@ private final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         case .inlineCode:
             wrapSelection(in: textView, prefix: "`", suffix: "`")
         case .heading(let level):
-            applyHeading(level, in: textView)
+            applyBlockStyle(.heading(level), in: textView)
         case .bulletList:
-            prefixSelectedLines(in: textView, with: "- ")
+            applyBlockStyle(.bulletList, in: textView)
         case .orderedList:
-            prefixSelectedLines(in: textView, with: "1. ")
+            applyBlockStyle(.orderedList, in: textView)
         case .taskList:
-            prefixSelectedLines(in: textView, with: "- [ ] ")
+            applyBlockStyle(.taskList, in: textView)
         case .blockquote:
-            prefixSelectedLines(in: textView, with: "> ")
+            applyBlockStyle(.blockquote, in: textView)
         case .codeBlock:
             wrapSelection(in: textView, prefix: "```\n", suffix: "\n```")
         case .link(let destination):
@@ -671,41 +671,24 @@ private final class NativeMarkdownCoordinator: NSObject, NSTextViewDelegate {
         commitChange(in: textView)
     }
 
-    private func applyHeading(_ level: Int, in textView: NSTextView) {
+    private func applyBlockStyle(
+        _ style: MarkdownBlockStyle,
+        in textView: NSTextView
+    ) {
         let selection = textView.selectedRange()
         let source = textView.string as NSString
-        let lineRange = source.lineRange(for: selection)
-        let line = source.substring(with: lineRange)
-        let newline = line.hasSuffix("\n") ? "\n" : ""
-        let content = line
-            .trimmingCharacters(in: .newlines)
-            .replacingOccurrences(
-                of: #"^#{1,6}[ \t]+"#,
-                with: "",
-                options: .regularExpression
-            )
-        let prefix = level == 0 ? "" : String(repeating: "#", count: level) + " "
-        let replacement = prefix + content + newline
-        textView.textStorage?.replaceCharacters(in: lineRange, with: replacement)
-        textView.setSelectedRange(
-            NSRange(
-                location: lineRange.location + prefix.utf16.count,
-                length: content.utf16.count
-            )
-        )
-        commitChange(in: textView)
-    }
+        let effectiveSelection = selection.length > 0
+            ? NSRange(location: selection.location, length: selection.length - 1)
+            : selection
+        let lineRange = source.lineRange(for: effectiveSelection)
+        let selectedLines = source.substring(with: lineRange)
+        let replacement = MarkdownBlockFormatter.transform(selectedLines, to: style)
 
-    private func prefixSelectedLines(in textView: NSTextView, with prefix: String) {
-        let selection = textView.selectedRange()
-        let source = textView.string as NSString
-        let lineRange = source.lineRange(for: selection)
-        let lines = source.substring(with: lineRange)
-        let replacement = lines.replacingOccurrences(
-            of: #"(?m)^(?=.)"#,
-            with: prefix,
-            options: .regularExpression
-        )
+        guard replacement != selectedLines else {
+            textView.window?.makeFirstResponder(textView)
+            return
+        }
+
         textView.textStorage?.replaceCharacters(in: lineRange, with: replacement)
         textView.setSelectedRange(
             NSRange(location: lineRange.location, length: replacement.utf16.count)

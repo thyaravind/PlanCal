@@ -73,8 +73,7 @@ struct NotesView: View {
         }
         .navigationDestination(item: $editorPresentation) { presentation in
             NoteEditor(
-                note: presentation.note,
-                showsCancelAction: false
+                note: presentation.note
             )
         }
     }

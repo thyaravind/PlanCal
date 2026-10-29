@@ -1,2 +1,4 @@
 timestamp,model,launcher,command,agent_name,phase(s),path
 2026-07-16T07:06:06Z,GPT-5 Codex,Codex Desktop,audit,unknown-agent,,.conduct/audits/2026-07-16-919e12bb-full-audit.md
+2026-08-11T16:10:40Z,GPT-5 Codex,Codex Desktop,execute-issue,unknown-agent,,.conduct/issue-completions/2026-08-11-fcb53e6e-completion.md
+2026-08-23T08:00:19Z,GPT-5 Codex,Codex Desktop,execute-issue,unknown-agent,,.conduct/issue-completions/2026-08-23-5174093d-completion.md

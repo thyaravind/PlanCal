@@ -39,6 +39,7 @@ struct RootView: View {
     @AppStorage("planning.carryOverdueTasks") private var carriesOverdueTasks = false
     @State private var selectedSection: AppSection? = .today
     @State private var selectedCompactSection = AppSection.today
+    @State private var splitNavigationIdentity = UUID()
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -79,7 +80,7 @@ struct RootView: View {
                             section: section,
                             isSelected: selectedSection == section
                         ) {
-                            selectedSection = section
+                            selectSplitSection(section)
                         }
                     }
                 }
@@ -92,6 +93,7 @@ struct RootView: View {
             NavigationStack {
                 sectionView(selectedSection ?? .today)
             }
+            .id(splitNavigationIdentity)
         }
     }
 
@@ -143,6 +145,11 @@ struct RootView: View {
             hour: notificationHour,
             minute: notificationMinute
         )
+    }
+
+    private func selectSplitSection(_ section: AppSection) {
+        selectedSection = section
+        splitNavigationIdentity = UUID()
     }
 }
 
